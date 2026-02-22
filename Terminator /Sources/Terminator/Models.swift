@@ -94,6 +94,7 @@ struct PersistedState: Codable {
     var sessions: [ChatSession]? = nil
     var currentSessionID: UUID? = nil
     var prefersNativeTab: Bool = true
+    var prefersDocsumoTab: Bool = true
     var showUnconfiguredProviders: Bool = false
     var panelHotkeyEnabled: Bool = true
     var panelHotkey: HotkeyConfig = .default

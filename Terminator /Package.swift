@@ -10,7 +10,10 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "Terminator",
-            path: "Sources/Terminator"
+            path: "Sources/Terminator",
+            resources: [
+                .process("Resources")
+            ]
         ),
     ]
 )

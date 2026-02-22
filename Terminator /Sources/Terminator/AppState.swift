@@ -17,6 +17,7 @@ final class AppState: ObservableObject {
     @Published var showingSettings: Bool = false
     @Published var attachments: [AttachmentItem] = []
     @Published var prefersNativeTab: Bool
+    @Published var prefersDocsumoTab: Bool
     @Published var showUnconfiguredProviders: Bool
     @Published var panelHotkeyEnabled: Bool
     @Published var panelHotkey: HotkeyConfig
@@ -30,6 +31,7 @@ final class AppState: ObservableObject {
         self.keys = loaded.keys
         self.selectedModelID = loaded.selectedModelID
         self.prefersNativeTab = loaded.prefersNativeTab
+        self.prefersDocsumoTab = loaded.prefersDocsumoTab
         self.showUnconfiguredProviders = loaded.showUnconfiguredProviders
         self.panelHotkeyEnabled = loaded.panelHotkeyEnabled
         self.panelHotkey = loaded.panelHotkey
@@ -87,6 +89,7 @@ final class AppState: ObservableObject {
                 sessions: sessions,
                 currentSessionID: currentSessionID,
                 prefersNativeTab: prefersNativeTab,
+                prefersDocsumoTab: prefersDocsumoTab,
                 showUnconfiguredProviders: showUnconfiguredProviders,
                 panelHotkeyEnabled: panelHotkeyEnabled,
                 panelHotkey: panelHotkey,

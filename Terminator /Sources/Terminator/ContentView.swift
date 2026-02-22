@@ -6,6 +6,7 @@ enum AppTab: String, CaseIterable, Identifiable {
     case openAI
     case gemini
     case anthropic
+    case docsumo
     case local
 
     var id: String { rawValue }
@@ -15,6 +16,7 @@ enum AppTab: String, CaseIterable, Identifiable {
         case .openAI: return "OpenAI"
         case .gemini: return "Gemini"
         case .anthropic: return "Anthropic"
+        case .docsumo: return "Docsumo"
         case .local: return "Local"
         }
     }
@@ -24,16 +26,38 @@ enum AppTab: String, CaseIterable, Identifiable {
         case .openAI: return "⌥1"
         case .gemini: return "⌥2"
         case .anthropic: return "⌥3"
-        case .local: return "⌥4"
+        case .docsumo: return "⌥4"
+        case .local: return "⌥5"
         }
     }
 
     var iconName: String {
         switch self {
-        case .openAI: return "sparkles"
-        case .gemini: return "diamond.fill"
-        case .anthropic: return "a.circle.fill"
-        case .local: return "terminal.fill"
+        case .openAI: return "openai"
+        case .gemini: return "gemini"
+        case .anthropic: return "anthropic"
+        case .docsumo: return "docsumo"
+        case .local: return "local"
+        }
+    }
+
+    var monogram: String {
+        switch self {
+        case .openAI: return "O"
+        case .gemini: return "G"
+        case .anthropic: return "A"
+        case .docsumo: return "D"
+        case .local: return "L"
+        }
+    }
+
+    var badgeColor: Color {
+        switch self {
+        case .openAI: return Color(red: 0.14, green: 0.84, blue: 0.71)
+        case .gemini: return Color(red: 0.35, green: 0.54, blue: 1.00)
+        case .anthropic: return Color(red: 0.90, green: 0.62, blue: 0.38)
+        case .docsumo: return Color(red: 0.93, green: 0.32, blue: 0.43)
+        case .local: return Color(red: 0.50, green: 0.56, blue: 0.63)
         }
     }
 
@@ -42,6 +66,7 @@ enum AppTab: String, CaseIterable, Identifiable {
         case .openAI: return URL(string: "https://chatgpt.com")
         case .gemini: return URL(string: "https://gemini.google.com")
         case .anthropic: return URL(string: "https://claude.ai")
+        case .docsumo: return URL(string: "https://chat.docsumo.com/chat")
         case .local: return nil
         }
     }
@@ -281,8 +306,7 @@ struct ContentView: View {
                         selectedTab = tab
                     } label: {
                         HStack(spacing: 7) {
-                            Image(systemName: tab.iconName)
-                                .font(.system(size: 11, weight: .semibold))
+                            tabIcon(tab)
                             Text(tab.shortcutLabel)
                                 .font(.system(size: 12, weight: .semibold, design: .rounded))
                         }
@@ -378,6 +402,9 @@ struct ContentView: View {
         if state.showUnconfiguredProviders || hasKey(state.keys.anthropic) {
             tabs.append(.anthropic)
         }
+        if state.prefersDocsumoTab {
+            tabs.append(.docsumo)
+        }
         if state.prefersNativeTab {
             tabs.append(.local)
         }
@@ -390,6 +417,50 @@ struct ContentView: View {
 
     private var canUseWebControls: Bool {
         selectedTab != .local && visibleTabs.contains(selectedTab)
+    }
+
+    @ViewBuilder
+    private func tabIcon(_ tab: AppTab) -> some View {
+        if let image = bundledTabIcon(named: tab.iconName) {
+            Image(nsImage: image)
+                .resizable()
+                .interpolation(.high)
+                .scaledToFit()
+                .frame(width: 14, height: 14)
+        } else if tab == .local {
+            Image(systemName: "terminal.fill")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.78))
+                .frame(width: 14, height: 14)
+        } else {
+            ZStack {
+                Circle()
+                    .fill(tab.badgeColor.opacity(0.88))
+                Text(tab.monogram)
+                    .font(.system(size: 9, weight: .heavy, design: .rounded))
+                    .foregroundStyle(.black.opacity(0.82))
+            }
+            .frame(width: 14, height: 14)
+        }
+    }
+
+    private func bundledTabIcon(named name: String) -> NSImage? {
+        let exts = ["png", "pdf", "jpg", "jpeg", "webp"]
+        for ext in exts {
+            if let url = Bundle.module.url(forResource: name, withExtension: ext, subdirectory: "Icons"),
+               let image = NSImage(contentsOf: url) {
+                return image
+            }
+            if let url = Bundle.module.url(forResource: "Icons/\(name)", withExtension: ext),
+               let image = NSImage(contentsOf: url) {
+                return image
+            }
+            if let url = Bundle.module.url(forResource: name, withExtension: ext),
+               let image = NSImage(contentsOf: url) {
+                return image
+            }
+        }
+        return nil
     }
 
     private var resizeHandle: some View {
