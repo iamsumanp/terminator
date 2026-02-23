@@ -3,10 +3,13 @@ import SwiftUI
 struct ModelDropdownView: View {
     let models: [ModelOption]
     let selectedModelID: String?
+    let favoriteModelIDs: Set<String>
     let onSelect: (String) -> Void
+    let onToggleFavorite: (String) -> Void
     let onConfigure: () -> Void
 
     @State private var query: String = ""
+    @State private var hoveredModelID: String?
     @FocusState private var searchFocused: Bool
 
     private var hasQuery: Bool {
@@ -24,17 +27,16 @@ struct ModelDropdownView: View {
     }
 
     private var favorites: [ModelOption] {
-        filtered.filter { model in
-            let value = model.displayName.lowercased()
-            return value.contains("opus") || value.contains("gpt-5") || value.contains("gemini")
-        }.prefix(5).map { $0 }
+        filtered.filter { favoriteModelIDs.contains($0.id) }
     }
 
     private var recommended: [ModelOption] {
         filtered.filter { model in
             let value = model.displayName.lowercased()
             return value.contains("sonnet") || value.contains("gpt") || value.contains("gemini") || value.contains("free")
-        }.prefix(8).map { $0 }
+        }
+        .filter { !favoriteModelIDs.contains($0.id) }
+        .prefix(8).map { $0 }
     }
 
     private var others: [ModelOption] {
@@ -57,7 +59,7 @@ struct ModelDropdownView: View {
                     if hasQuery {
                         section("Results (\(filtered.count))", items: filtered)
                     } else {
-                        section("Favorite", items: favorites)
+                        section("Favorites", items: favorites)
                         section("Recommended", items: recommended)
                         section("All Models", items: others)
                     }
@@ -91,30 +93,45 @@ struct ModelDropdownView: View {
 
                 VStack(alignment: .leading, spacing: 6) {
                     ForEach(items) { model in
-                        Button {
-                            onSelect(model.id)
-                        } label: {
-                            HStack(spacing: 8) {
-                                Image(systemName: icon(for: model.provider))
-                                    .font(.system(size: 12, weight: .semibold))
-                                    .foregroundStyle(.indigo.opacity(0.9))
-                                    .frame(width: 16)
+                        HStack(spacing: 8) {
+                            Image(systemName: icon(for: model.provider))
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(.indigo.opacity(0.9))
+                                .frame(width: 16)
 
-                                Text(model.displayName)
-                                    .lineLimit(1)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            Text(model.displayName)
+                                .lineLimit(1)
+                                .frame(maxWidth: .infinity, alignment: .leading)
 
-                                if selectedModelID == model.id {
-                                    Image(systemName: "checkmark")
-                                        .foregroundStyle(.white.opacity(0.95))
-                                }
+                            if selectedModelID == model.id {
+                                Image(systemName: "checkmark")
+                                    .foregroundStyle(.white.opacity(0.95))
                             }
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 6)
-                            .background(selectedModelID == model.id ? Color.blue.opacity(0.45) : .clear)
-                            .clipShape(RoundedRectangle(cornerRadius: 8))
+
+                            if hoveredModelID == model.id || favoriteModelIDs.contains(model.id) {
+                                Button {
+                                    onToggleFavorite(model.id)
+                                } label: {
+                                    Image(systemName: favoriteModelIDs.contains(model.id) ? "star.fill" : "star")
+                                        .font(.system(size: 12, weight: .semibold))
+                                        .foregroundStyle(favoriteModelIDs.contains(model.id) ? .white.opacity(0.95) : .white.opacity(0.7))
+                                        .frame(width: 18, height: 18)
+                                }
+                                .buttonStyle(.plain)
+                                .help(favoriteModelIDs.contains(model.id) ? "Remove from favorites" : "Add to favorites")
+                            }
                         }
-                        .buttonStyle(.plain)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 6)
+                        .contentShape(RoundedRectangle(cornerRadius: 8))
+                        .background(selectedModelID == model.id ? Color.blue.opacity(0.45) : .clear)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                        .onTapGesture {
+                            onSelect(model.id)
+                        }
+                        .onHover { hovering in
+                            hoveredModelID = hovering ? model.id : (hoveredModelID == model.id ? nil : hoveredModelID)
+                        }
                     }
                 }
             }

@@ -82,6 +82,7 @@ final class WebViewCoordinator: NSObject, ObservableObject {
     private var observations: [NSKeyValueObservation] = []
     private var activeTab: AppTab = .openAI
     private let processPool = WKProcessPool()
+    private var pageZoom: Double = 1.0
 
     func select(_ tab: AppTab) {
         activeTab = tab
@@ -102,6 +103,7 @@ final class WebViewCoordinator: NSObject, ObservableObject {
         webView.setValue(false, forKey: "drawsBackground")
         webView.navigationDelegate = self
         webView.uiDelegate = self
+        webView.pageZoom = pageZoom
 
         if let url = tab.landingURL {
             webView.load(URLRequest(url: url))
@@ -124,6 +126,13 @@ final class WebViewCoordinator: NSObject, ObservableObject {
 
     func reload() {
         webViews[activeTab]?.reload()
+    }
+
+    func setPageZoom(_ zoom: Double) {
+        pageZoom = zoom
+        for webView in webViews.values {
+            webView.pageZoom = zoom
+        }
     }
 
     private func bindActiveWebView() {
@@ -209,6 +218,9 @@ struct ContentView: View {
     @StateObject private var web = WebViewCoordinator()
     @State private var selectedTab: AppTab = .openAI
     @State private var resizeStartSize: CGSize?
+    private let minWebZoom: Double = 0.7
+    private let maxWebZoom: Double = 2.0
+    private let webZoomStep: Double = 0.1
 
     var body: some View {
         ZStack {
@@ -234,6 +246,7 @@ struct ContentView: View {
             if let initialTab = visibleTabs.first {
                 selectedTab = visibleTabs.contains(selectedTab) ? selectedTab : initialTab
             }
+            web.setPageZoom(clampedWebZoom(state.webZoom))
             web.select(selectedTab)
             for tab in visibleTabs where tab != .local {
                 _ = web.webView(for: tab)
@@ -265,72 +278,127 @@ struct ContentView: View {
 
     private var topBar: some View {
         HStack(spacing: 10) {
-            Button {
-                web.goBack()
-            } label: {
-                Image(systemName: "chevron.left")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.white.opacity((canUseWebControls && web.canGoBack) ? 0.88 : 0.35))
-                    .frame(width: 26, height: 26)
+            HStack(spacing: 2) {
+                Button {
+                    web.goBack()
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.white.opacity((canUseWebControls && web.canGoBack) ? 0.88 : 0.35))
+                        .frame(width: 26, height: 26)
+                }
+                .buttonStyle(.plain)
+                .disabled(!canUseWebControls || !web.canGoBack)
+
+                Button {
+                    web.goForward()
+                } label: {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.white.opacity((canUseWebControls && web.canGoForward) ? 0.88 : 0.35))
+                        .frame(width: 26, height: 26)
+                }
+                .buttonStyle(.plain)
+                .disabled(!canUseWebControls || !web.canGoForward)
+
+                Button {
+                    web.reload()
+                } label: {
+                    Image(systemName: web.isLoading ? "arrow.triangle.2.circlepath.circle.fill" : "arrow.clockwise")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.white.opacity(canUseWebControls ? 0.88 : 0.35))
+                        .frame(width: 26, height: 26)
+                }
+                .buttonStyle(.plain)
+                .disabled(!canUseWebControls)
             }
-            .buttonStyle(.plain)
-            .disabled(!canUseWebControls || !web.canGoBack)
+            .padding(.horizontal, 2)
 
-            Button {
-                web.goForward()
-            } label: {
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.white.opacity((canUseWebControls && web.canGoForward) ? 0.88 : 0.35))
-                    .frame(width: 26, height: 26)
-            }
-            .buttonStyle(.plain)
-            .disabled(!canUseWebControls || !web.canGoForward)
-
-            Button {
-                web.reload()
-            } label: {
-                Image(systemName: web.isLoading ? "arrow.triangle.2.circlepath.circle.fill" : "arrow.clockwise")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.white.opacity(canUseWebControls ? 0.88 : 0.35))
-                    .frame(width: 26, height: 26)
-            }
-            .buttonStyle(.plain)
-            .disabled(!canUseWebControls)
-
-            Spacer()
-
-            HStack(spacing: 6) {
-                ForEach(visibleTabs) { tab in
-                    Button {
-                        selectedTab = tab
-                    } label: {
-                        HStack(spacing: 7) {
-                            tabIcon(tab)
-                            Text(tab.shortcutLabel)
-                                .font(.system(size: 12, weight: .semibold, design: .rounded))
-                        }
-                        .foregroundStyle(selectedTab == tab ? .white : .white.opacity(0.66))
-                        .frame(minWidth: 90, minHeight: 40)
-                        .contentShape(RoundedRectangle(cornerRadius: 10))
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    ForEach(visibleTabs) { tab in
+                        Button {
+                            selectedTab = tab
+                        } label: {
+                            HStack(spacing: isCompactTopBar ? 0 : 7) {
+                                tabIcon(tab)
+                                if !isCompactTopBar {
+                                    Text(tab.shortcutLabel)
+                                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                                }
+                            }
+                            .foregroundStyle(selectedTab == tab ? .white : .white.opacity(0.66))
+                            .frame(minWidth: isCompactTopBar ? 38 : 76, minHeight: 36)
+                            .contentShape(RoundedRectangle(cornerRadius: 10))
                             .background(
                                 RoundedRectangle(cornerRadius: 10)
                                     .fill(selectedTab == tab ? Color.white.opacity(0.16) : Color.clear)
                             )
-                    }
-                    .buttonStyle(.plain)
-                    .help(tab.title)
-                    .onHover { hovering in
-                        if hovering {
-                            NSCursor.pointingHand.push()
-                        } else {
-                            NSCursor.pop()
+                        }
+                        .buttonStyle(.plain)
+                        .help(tab.title)
+                        .onHover { hovering in
+                            if hovering {
+                                NSCursor.pointingHand.push()
+                            } else {
+                                NSCursor.pop()
+                            }
                         }
                     }
                 }
+                .padding(.horizontal, 2)
             }
+            .frame(maxWidth: .infinity)
 
-            Spacer()
+            HStack(spacing: 4) {
+                Button {
+                    adjustWebZoom(by: -webZoomStep)
+                } label: {
+                    Image(systemName: "minus")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.white.opacity(canZoomOut ? 0.88 : 0.35))
+                        .frame(width: 22, height: 22)
+                }
+                .buttonStyle(.plain)
+                .disabled(!canZoomOut)
+                .keyboardShortcut("-", modifiers: .command)
+                .help("Zoom Out (\u{2318}-)")
+
+                Button {
+                    resetWebZoom()
+                } label: {
+                    Group {
+                        if isCompactTopBar {
+                            Text("\(Int((state.webZoom * 100).rounded()))")
+                        } else {
+                            Text(webZoomLabel)
+                        }
+                    }
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.85))
+                    .frame(minWidth: isCompactTopBar ? 34 : 44, minHeight: 22)
+                }
+                .buttonStyle(.plain)
+                .keyboardShortcut("0", modifiers: .command)
+                .help("Reset Zoom (\u{2318}0)")
+
+                Button {
+                    adjustWebZoom(by: webZoomStep)
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.white.opacity(canZoomIn ? 0.88 : 0.35))
+                        .frame(width: 22, height: 22)
+                }
+                .buttonStyle(.plain)
+                .disabled(!canZoomIn)
+                .keyboardShortcut("=", modifiers: .command)
+                .help("Zoom In (\u{2318}=)")
+            }
+            .padding(.horizontal, 4)
+            .padding(.vertical, 2)
+            .background(Color.white.opacity(0.06))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
 
             Button {
                 state.showingSettings = true
@@ -417,6 +485,44 @@ struct ContentView: View {
 
     private var canUseWebControls: Bool {
         selectedTab != .local && visibleTabs.contains(selectedTab)
+    }
+
+    private var isCompactTopBar: Bool {
+        state.panelWidth < 760
+    }
+
+    private var webZoomLabel: String {
+        "\(Int((state.webZoom * 100).rounded()))%"
+    }
+
+    private var canZoomIn: Bool {
+        state.webZoom < maxWebZoom
+    }
+
+    private var canZoomOut: Bool {
+        state.webZoom > minWebZoom
+    }
+
+    private func clampedWebZoom(_ zoom: Double) -> Double {
+        min(max(zoom, minWebZoom), maxWebZoom)
+    }
+
+    private func adjustWebZoom(by delta: Double) {
+        let adjusted = (state.webZoom + delta) / webZoomStep
+        let rounded = (adjusted.rounded() * webZoomStep)
+        applyWebZoom(rounded)
+    }
+
+    private func resetWebZoom() {
+        applyWebZoom(1.0)
+    }
+
+    private func applyWebZoom(_ zoom: Double) {
+        let clamped = clampedWebZoom(zoom)
+        guard abs(clamped - state.webZoom) > 0.0001 else { return }
+        state.webZoom = clamped
+        web.setPageZoom(clamped)
+        state.persist()
     }
 
     @ViewBuilder
@@ -676,10 +782,14 @@ private struct LocalNativeChatPane: View {
             ModelDropdownView(
                 models: state.availableModels,
                 selectedModelID: state.selectedModelID,
+                favoriteModelIDs: Set(state.favoriteModelIDs),
                 onSelect: { id in
                     state.selectedModelID = id
                     state.persist()
                     showingModelMenu = false
+                },
+                onToggleFavorite: { id in
+                    state.toggleFavoriteModel(id)
                 },
                 onConfigure: {
                     showingModelMenu = false

@@ -100,6 +100,8 @@ struct PersistedState: Codable {
     var panelHotkey: HotkeyConfig = .default
     var panelWidth: Double = 630
     var panelHeight: Double = 620
+    var webZoom: Double = 1.0
+    var favoriteModelIDs: [String] = []
 }
 
 struct AttachmentItem: Identifiable, Hashable {

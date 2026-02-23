@@ -23,6 +23,8 @@ final class AppState: ObservableObject {
     @Published var panelHotkey: HotkeyConfig
     @Published var panelWidth: Double
     @Published var panelHeight: Double
+    @Published var webZoom: Double
+    @Published var favoriteModelIDs: [String]
 
     private let api = APIService()
 
@@ -37,6 +39,8 @@ final class AppState: ObservableObject {
         self.panelHotkey = loaded.panelHotkey
         self.panelWidth = loaded.panelWidth
         self.panelHeight = loaded.panelHeight
+        self.webZoom = loaded.webZoom
+        self.favoriteModelIDs = loaded.favoriteModelIDs
 
         if let savedSessions = loaded.sessions, !savedSessions.isEmpty {
             let fallbackID = savedSessions[0].id
@@ -94,7 +98,9 @@ final class AppState: ObservableObject {
                 panelHotkeyEnabled: panelHotkeyEnabled,
                 panelHotkey: panelHotkey,
                 panelWidth: panelWidth,
-                panelHeight: panelHeight
+                panelHeight: panelHeight,
+                webZoom: webZoom,
+                favoriteModelIDs: favoriteModelIDs
             )
         )
     }
@@ -127,6 +133,15 @@ final class AppState: ObservableObject {
         Task {
             await refreshModels()
         }
+    }
+
+    func toggleFavoriteModel(_ id: String) {
+        if favoriteModelIDs.contains(id) {
+            favoriteModelIDs.removeAll { $0 == id }
+        } else {
+            favoriteModelIDs.append(id)
+        }
+        persist()
     }
 
     func sendCurrentDraft() {
