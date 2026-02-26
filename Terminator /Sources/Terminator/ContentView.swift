@@ -2,73 +2,86 @@ import SwiftUI
 import AppKit
 import WebKit
 
-enum AppTab: String, CaseIterable, Identifiable {
-    case openAI
-    case gemini
-    case anthropic
-    case docsumo
-    case local
+struct AppTab: Identifiable {
+    let id: String
+    let title: String
+    let shortcutLabel: String?
+    let iconName: String?
+    let monogram: String
+    let badgeColor: Color
+    let landingURL: URL?
+    let isLocal: Bool
 
-    var id: String { rawValue }
+    static let openAI = AppTab(
+        id: "openAI",
+        title: "OpenAI",
+        shortcutLabel: "⌥1",
+        iconName: "openai",
+        monogram: "O",
+        badgeColor: Color(red: 0.14, green: 0.84, blue: 0.71),
+        landingURL: URL(string: "https://chatgpt.com"),
+        isLocal: false
+    )
 
-    var title: String {
-        switch self {
-        case .openAI: return "OpenAI"
-        case .gemini: return "Gemini"
-        case .anthropic: return "Anthropic"
-        case .docsumo: return "Docsumo"
-        case .local: return "Local"
-        }
-    }
+    static let gemini = AppTab(
+        id: "gemini",
+        title: "Gemini",
+        shortcutLabel: "⌥2",
+        iconName: "gemini",
+        monogram: "G",
+        badgeColor: Color(red: 0.35, green: 0.54, blue: 1.00),
+        landingURL: URL(string: "https://gemini.google.com"),
+        isLocal: false
+    )
 
-    var shortcutLabel: String {
-        switch self {
-        case .openAI: return "⌥1"
-        case .gemini: return "⌥2"
-        case .anthropic: return "⌥3"
-        case .docsumo: return "⌥4"
-        case .local: return "⌥5"
-        }
-    }
+    static let anthropic = AppTab(
+        id: "anthropic",
+        title: "Anthropic",
+        shortcutLabel: "⌥3",
+        iconName: "anthropic",
+        monogram: "A",
+        badgeColor: Color(red: 0.90, green: 0.62, blue: 0.38),
+        landingURL: URL(string: "https://claude.ai"),
+        isLocal: false
+    )
 
-    var iconName: String {
-        switch self {
-        case .openAI: return "openai"
-        case .gemini: return "gemini"
-        case .anthropic: return "anthropic"
-        case .docsumo: return "docsumo"
-        case .local: return "local"
-        }
-    }
+    static let docsumo = AppTab(
+        id: "docsumo",
+        title: "Docsumo",
+        shortcutLabel: "⌥4",
+        iconName: "docsumo",
+        monogram: "D",
+        badgeColor: Color(red: 0.93, green: 0.32, blue: 0.43),
+        landingURL: URL(string: "https://chat.docsumo.com/chat"),
+        isLocal: false
+    )
 
-    var monogram: String {
-        switch self {
-        case .openAI: return "O"
-        case .gemini: return "G"
-        case .anthropic: return "A"
-        case .docsumo: return "D"
-        case .local: return "L"
-        }
-    }
+    static let local = AppTab(
+        id: "local",
+        title: "Local",
+        shortcutLabel: "⌥5",
+        iconName: "local",
+        monogram: "L",
+        badgeColor: Color(red: 0.50, green: 0.56, blue: 0.63),
+        landingURL: nil,
+        isLocal: true
+    )
 
-    var badgeColor: Color {
-        switch self {
-        case .openAI: return Color(red: 0.14, green: 0.84, blue: 0.71)
-        case .gemini: return Color(red: 0.35, green: 0.54, blue: 1.00)
-        case .anthropic: return Color(red: 0.90, green: 0.62, blue: 0.38)
-        case .docsumo: return Color(red: 0.93, green: 0.32, blue: 0.43)
-        case .local: return Color(red: 0.50, green: 0.56, blue: 0.63)
-        }
-    }
-
-    var landingURL: URL? {
-        switch self {
-        case .openAI: return URL(string: "https://chatgpt.com")
-        case .gemini: return URL(string: "https://gemini.google.com")
-        case .anthropic: return URL(string: "https://claude.ai")
-        case .docsumo: return URL(string: "https://chat.docsumo.com/chat")
-        case .local: return nil
-        }
+    static func custom(_ provider: CustomProvider) -> AppTab? {
+        guard let url = URL(string: provider.urlString) else { return nil }
+        let trimmed = provider.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let title = trimmed.isEmpty ? (url.host ?? "Custom") : trimmed
+        let monogram = String(title.prefix(1)).uppercased()
+        return AppTab(
+            id: "custom-\(provider.id.uuidString)",
+            title: title,
+            shortcutLabel: nil,
+            iconName: nil,
+            monogram: monogram.isEmpty ? "C" : monogram,
+            badgeColor: Color(red: 0.86, green: 0.60, blue: 0.36),
+            landingURL: url,
+            isLocal: false
+        )
     }
 }
 
@@ -78,19 +91,21 @@ final class WebViewCoordinator: NSObject, ObservableObject {
     @Published var canGoForward: Bool = false
     @Published var isLoading: Bool = false
 
-    private var webViews: [AppTab: WKWebView] = [:]
+    private var webViews: [String: WKWebView] = [:]
     private var observations: [NSKeyValueObservation] = []
-    private var activeTab: AppTab = .openAI
+    private var activeTabID: String?
+    private var activeTabIsLocal: Bool = false
     private let processPool = WKProcessPool()
     private var pageZoom: Double = 1.0
 
-    func select(_ tab: AppTab) {
-        activeTab = tab
+    func select(tabID: String, isLocal: Bool) {
+        activeTabID = tabID
+        activeTabIsLocal = isLocal
         bindActiveWebView()
     }
 
     func webView(for tab: AppTab) -> WKWebView {
-        if let existing = webViews[tab] {
+        if let existing = webViews[tab.id] {
             return existing
         }
 
@@ -109,23 +124,26 @@ final class WebViewCoordinator: NSObject, ObservableObject {
             webView.load(URLRequest(url: url))
         }
 
-        webViews[tab] = webView
-        if tab == activeTab {
+        webViews[tab.id] = webView
+        if tab.id == activeTabID {
             bindActiveWebView()
         }
         return webView
     }
 
     func goBack() {
-        webViews[activeTab]?.goBack()
+        guard let activeTabID else { return }
+        webViews[activeTabID]?.goBack()
     }
 
     func goForward() {
-        webViews[activeTab]?.goForward()
+        guard let activeTabID else { return }
+        webViews[activeTabID]?.goForward()
     }
 
     func reload() {
-        webViews[activeTab]?.reload()
+        guard let activeTabID else { return }
+        webViews[activeTabID]?.reload()
     }
 
     func setPageZoom(_ zoom: Double) {
@@ -135,10 +153,84 @@ final class WebViewCoordinator: NSObject, ObservableObject {
         }
     }
 
+    func focusActiveInput() {
+        guard !activeTabIsLocal, let activeTabID, let webView = webViews[activeTabID] else { return }
+        webView.window?.makeFirstResponder(webView)
+        _ = webView.becomeFirstResponder()
+
+        let script = """
+        (() => {
+          const isVisible = (el) => {
+            const rect = el.getBoundingClientRect();
+            const style = window.getComputedStyle(el);
+            return rect.width > 6 && rect.height > 6 &&
+              style.visibility !== 'hidden' &&
+              style.display !== 'none';
+          };
+
+          const isEditable = (el) => {
+            if (!el || !isVisible(el)) return false;
+            if (el.matches('textarea')) return !el.disabled && !el.readOnly;
+            if (el.matches('input')) {
+              const t = (el.type || 'text').toLowerCase();
+              const ok = ['text', 'search', 'email', 'url', 'tel', 'password', 'number'];
+              return ok.includes(t) && !el.disabled && !el.readOnly;
+            }
+            return el.isContentEditable === true;
+          };
+
+          const rank = (el) => {
+            const rect = el.getBoundingClientRect();
+            const attrs = [
+              el.getAttribute('placeholder') || '',
+              el.getAttribute('aria-label') || '',
+              el.getAttribute('name') || '',
+              el.id || '',
+              el.className || ''
+            ].join(' ').toLowerCase();
+
+            let score = 0;
+            if (attrs.match(/message|chat|prompt|reply|ask|send|write/)) score += 100;
+            if (el.matches('textarea,[contenteditable=\"true\"]')) score += 20;
+            if (rect.top > window.innerHeight * 0.45) score += 25;
+            score += Math.min(rect.width, 900) / 40;
+            return score;
+          };
+
+          const nodes = Array.from(document.querySelectorAll('textarea, input, [contenteditable=\"true\"]'))
+            .filter(isEditable)
+            .sort((a, b) => rank(b) - rank(a));
+
+          const target = nodes[0];
+          if (!target) return;
+          target.focus({ preventScroll: true });
+
+          if (target.matches('textarea,input')) {
+            const len = target.value?.length ?? 0;
+            target.setSelectionRange?.(len, len);
+          } else if (target.isContentEditable) {
+            const sel = window.getSelection();
+            const range = document.createRange();
+            range.selectNodeContents(target);
+            range.collapse(false);
+            sel?.removeAllRanges();
+            sel?.addRange(range);
+          }
+        })();
+        """
+        webView.evaluateJavaScript(script, completionHandler: nil)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            webView.evaluateJavaScript(script, completionHandler: nil)
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.55) {
+            webView.evaluateJavaScript(script, completionHandler: nil)
+        }
+    }
+
     private func bindActiveWebView() {
         observations.removeAll()
 
-        guard activeTab != .local, let webView = webViews[activeTab] else {
+        guard !activeTabIsLocal, let activeTabID, let webView = webViews[activeTabID] else {
             canGoBack = false
             canGoForward = false
             isLoading = false
@@ -216,7 +308,7 @@ private struct ProviderWebView: NSViewRepresentable {
 struct ContentView: View {
     @ObservedObject var state: AppState
     @StateObject private var web = WebViewCoordinator()
-    @State private var selectedTab: AppTab = .openAI
+    @State private var selectedTabID: String = AppTab.openAI.id
     @State private var resizeStartSize: CGSize?
     private let minWebZoom: Double = 0.7
     private let maxWebZoom: Double = 2.0
@@ -244,21 +336,28 @@ struct ContentView: View {
         .onAppear {
             state.boot()
             if let initialTab = visibleTabs.first {
-                selectedTab = visibleTabs.contains(selectedTab) ? selectedTab : initialTab
+                selectedTabID = visibleTabIDs.contains(selectedTabID) ? selectedTabID : initialTab.id
             }
             web.setPageZoom(clampedWebZoom(state.webZoom))
-            web.select(selectedTab)
-            for tab in visibleTabs where tab != .local {
+            selectCurrentTabInWebCoordinator()
+            for tab in visibleTabs where !tab.isLocal {
                 _ = web.webView(for: tab)
             }
         }
-        .onChange(of: selectedTab) { newTab in
-            web.select(newTab)
+        .onChange(of: selectedTabID) { _ in
+            selectCurrentTabInWebCoordinator()
         }
         .onChange(of: visibleTabIDs) { _ in
             guard let fallback = visibleTabs.first else { return }
-            if !visibleTabs.contains(selectedTab) {
-                selectedTab = fallback
+            if !visibleTabIDs.contains(selectedTabID) {
+                selectedTabID = fallback.id
+            }
+        }
+        .onChange(of: state.focusRequestToken) { _ in
+            if !(selectedTab?.isLocal ?? false) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
+                    web.focusActiveInput()
+                }
             }
         }
     }
@@ -318,21 +417,21 @@ struct ContentView: View {
                 HStack(spacing: 6) {
                     ForEach(visibleTabs) { tab in
                         Button {
-                            selectedTab = tab
+                            selectedTabID = tab.id
                         } label: {
                             HStack(spacing: isCompactTopBar ? 0 : 7) {
                                 tabIcon(tab)
-                                if !isCompactTopBar {
-                                    Text(tab.shortcutLabel)
+                                if !isCompactTopBar, let shortcut = tab.shortcutLabel {
+                                    Text(shortcut)
                                         .font(.system(size: 12, weight: .semibold, design: .rounded))
                                 }
                             }
-                            .foregroundStyle(selectedTab == tab ? .white : .white.opacity(0.66))
+                            .foregroundStyle(selectedTabID == tab.id ? .white : .white.opacity(0.66))
                             .frame(minWidth: isCompactTopBar ? 38 : 76, minHeight: 36)
                             .contentShape(RoundedRectangle(cornerRadius: 10))
                             .background(
                                 RoundedRectangle(cornerRadius: 10)
-                                    .fill(selectedTab == tab ? Color.white.opacity(0.16) : Color.clear)
+                                    .fill(selectedTabID == tab.id ? Color.white.opacity(0.16) : Color.clear)
                             )
                         }
                         .buttonStyle(.plain)
@@ -443,14 +542,13 @@ struct ContentView: View {
                 .controlSize(.small)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else if selectedTab == .local && state.prefersNativeTab {
+        } else if selectedTab?.isLocal == true && state.prefersNativeTab {
             LocalNativeChatPane(state: state)
-        } else if visibleTabs.contains(selectedTab) {
-            let webTab: AppTab = selectedTab == .local ? .openAI : selectedTab
-            ProviderWebView(webView: web.webView(for: webTab))
-                .id(webTab.id)
+        } else if let tab = selectedTab, !tab.isLocal {
+            ProviderWebView(webView: web.webView(for: tab))
+                .id(tab.id)
                 .background(Color.clear)
-        } else if let fallback = visibleTabs.first {
+        } else if let fallback = firstWebTab {
             ProviderWebView(webView: web.webView(for: fallback))
                 .id(fallback.id)
                 .background(Color.clear)
@@ -473,6 +571,11 @@ struct ContentView: View {
         if state.prefersDocsumoTab {
             tabs.append(.docsumo)
         }
+        let customTabs: [AppTab] = state.customProviders.compactMap { provider in
+            guard provider.isEnabled else { return nil }
+            return AppTab.custom(provider)
+        }
+        tabs.append(contentsOf: customTabs)
         if state.prefersNativeTab {
             tabs.append(.local)
         }
@@ -484,7 +587,7 @@ struct ContentView: View {
     }
 
     private var canUseWebControls: Bool {
-        selectedTab != .local && visibleTabs.contains(selectedTab)
+        selectedTab?.isLocal == false
     }
 
     private var isCompactTopBar: Bool {
@@ -527,13 +630,13 @@ struct ContentView: View {
 
     @ViewBuilder
     private func tabIcon(_ tab: AppTab) -> some View {
-        if let image = bundledTabIcon(named: tab.iconName) {
+        if let iconName = tab.iconName, let image = bundledTabIcon(named: iconName) {
             Image(nsImage: image)
                 .resizable()
                 .interpolation(.high)
                 .scaledToFit()
                 .frame(width: 14, height: 14)
-        } else if tab == .local {
+        } else if tab.isLocal {
             Image(systemName: "terminal.fill")
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.78))
@@ -615,6 +718,19 @@ struct ContentView: View {
         !key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
+    private var selectedTab: AppTab? {
+        visibleTabs.first(where: { $0.id == selectedTabID })
+    }
+
+    private var firstWebTab: AppTab? {
+        visibleTabs.first(where: { !$0.isLocal })
+    }
+
+    private func selectCurrentTabInWebCoordinator() {
+        guard let tab = selectedTab else { return }
+        web.select(tabID: tab.id, isLocal: tab.isLocal)
+    }
+
     @ViewBuilder
     private var settingsOverlay: some View {
         if state.showingSettings {
@@ -660,9 +776,10 @@ private struct LocalNativeChatPane: View {
             composer
         }
         .onAppear {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                composerFocused = true
-            }
+            requestComposerFocus()
+        }
+        .onChange(of: state.focusRequestToken) { _ in
+            requestComposerFocus()
         }
     }
 
@@ -1055,6 +1172,16 @@ private struct LocalNativeChatPane: View {
             withAnimation(.easeOut(duration: 0.2)) {
                 proxy.scrollTo(bottomAnchorID, anchor: .bottom)
             }
+        }
+    }
+
+    private func requestComposerFocus() {
+        composerFocused = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.06) {
+            composerFocused = true
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            composerFocused = true
         }
     }
 }

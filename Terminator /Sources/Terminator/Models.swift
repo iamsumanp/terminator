@@ -46,6 +46,20 @@ struct ProviderKeys: Codable {
     var openRouter: String = ""
 }
 
+struct CustomProvider: Codable, Identifiable, Hashable {
+    let id: UUID
+    var name: String
+    var urlString: String
+    var isEnabled: Bool
+
+    init(id: UUID = UUID(), name: String, urlString: String, isEnabled: Bool = true) {
+        self.id = id
+        self.name = name
+        self.urlString = urlString
+        self.isEnabled = isEnabled
+    }
+}
+
 struct ChatMessage: Codable, Identifiable {
     enum Role: String, Codable {
         case user
@@ -102,6 +116,7 @@ struct PersistedState: Codable {
     var panelHeight: Double = 620
     var webZoom: Double = 1.0
     var favoriteModelIDs: [String] = []
+    var customProviders: [CustomProvider]? = nil
 }
 
 struct AttachmentItem: Identifiable, Hashable {

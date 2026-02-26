@@ -25,6 +25,8 @@ final class AppState: ObservableObject {
     @Published var panelHeight: Double
     @Published var webZoom: Double
     @Published var favoriteModelIDs: [String]
+    @Published var customProviders: [CustomProvider]
+    @Published var focusRequestToken: Int = 0
 
     private let api = APIService()
 
@@ -41,6 +43,7 @@ final class AppState: ObservableObject {
         self.panelHeight = loaded.panelHeight
         self.webZoom = loaded.webZoom
         self.favoriteModelIDs = loaded.favoriteModelIDs
+        self.customProviders = loaded.customProviders ?? []
 
         if let savedSessions = loaded.sessions, !savedSessions.isEmpty {
             let fallbackID = savedSessions[0].id
@@ -62,6 +65,10 @@ final class AppState: ObservableObject {
 
     var selectedModel: ModelOption? {
         availableModels.first(where: { $0.id == selectedModelID })
+    }
+
+    func requestInputFocus() {
+        focusRequestToken &+= 1
     }
 
     func boot() {
@@ -100,9 +107,44 @@ final class AppState: ObservableObject {
                 panelWidth: panelWidth,
                 panelHeight: panelHeight,
                 webZoom: webZoom,
-                favoriteModelIDs: favoriteModelIDs
+                favoriteModelIDs: favoriteModelIDs,
+                customProviders: customProviders
             )
         )
+    }
+
+    @discardableResult
+    func addCustomProvider(name: String, urlString: String) -> String? {
+        let cleanedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleanedName.isEmpty else { return "Provider name is required." }
+
+        guard let normalizedURL = normalizeProviderURL(urlString) else {
+            return "Enter a valid URL, for example https://ollama.com."
+        }
+
+        let normalizedText = normalizedURL.absoluteString.lowercased()
+        if customProviders.contains(where: { normalizeProviderURL($0.urlString)?.absoluteString.lowercased() == normalizedText }) {
+            return "That provider URL already exists."
+        }
+
+        customProviders.append(CustomProvider(name: cleanedName, urlString: normalizedURL.absoluteString))
+        persist()
+        return nil
+    }
+
+    func removeCustomProvider(id: UUID) {
+        customProviders.removeAll { $0.id == id }
+        persist()
+    }
+
+    func setCustomProviderEnabled(id: UUID, isEnabled: Bool) {
+        guard let index = customProviders.firstIndex(where: { $0.id == id }) else { return }
+        customProviders[index].isEnabled = isEnabled
+        persist()
+    }
+
+    func normalizedCustomProviderURL(_ provider: CustomProvider) -> URL? {
+        normalizeProviderURL(provider.urlString)
     }
 
     func clearChat() {
@@ -269,5 +311,25 @@ final class AppState: ObservableObject {
         let cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
         if cleaned.isEmpty { return "New Chat" }
         return String(cleaned.prefix(42))
+    }
+
+    private func normalizeProviderURL(_ text: String) -> URL? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        let withScheme: String
+        if trimmed.lowercased().hasPrefix("http://") || trimmed.lowercased().hasPrefix("https://") {
+            withScheme = trimmed
+        } else {
+            withScheme = "https://\(trimmed)"
+        }
+
+        guard let url = URL(string: withScheme),
+              let scheme = url.scheme?.lowercased(),
+              (scheme == "http" || scheme == "https"),
+              url.host != nil else {
+            return nil
+        }
+        return url
     }
 }
