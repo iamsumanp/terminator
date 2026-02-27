@@ -1,5 +1,5 @@
-import SwiftUI
 import AppKit
+import SwiftUI
 
 struct PromptInputView: NSViewRepresentable {
     @Binding var text: String

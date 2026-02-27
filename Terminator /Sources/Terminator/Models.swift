@@ -60,6 +60,14 @@ struct CustomProvider: Codable, Identifiable, Hashable {
     }
 }
 
+struct ProviderTabVisibility: Codable {
+    var openAI: Bool = true
+    var gemini: Bool = true
+    var anthropic: Bool = true
+    var docsumo: Bool = true
+    var local: Bool = true
+}
+
 struct ChatMessage: Codable, Identifiable {
     enum Role: String, Codable {
         case user
@@ -115,8 +123,10 @@ struct PersistedState: Codable {
     var panelWidth: Double = 630
     var panelHeight: Double = 620
     var webZoom: Double = 1.0
+    var inactiveWebTabUnloadMinutes: Int = 0
     var favoriteModelIDs: [String] = []
     var customProviders: [CustomProvider]? = nil
+    var providerTabVisibility: ProviderTabVisibility = ProviderTabVisibility()
 }
 
 struct AttachmentItem: Identifiable, Hashable {

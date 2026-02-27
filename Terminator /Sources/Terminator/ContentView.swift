@@ -95,13 +95,20 @@ final class WebViewCoordinator: NSObject, ObservableObject {
     private var observations: [NSKeyValueObservation] = []
     private var activeTabID: String?
     private var activeTabIsLocal: Bool = false
+    private var tabLastActiveAt: [String: Date] = [:]
+    private var pruneTimer: Timer?
+    private var inactivePruneTimeout: TimeInterval?
     private let processPool = WKProcessPool()
     private var pageZoom: Double = 1.0
 
     func select(tabID: String, isLocal: Bool) {
         activeTabID = tabID
         activeTabIsLocal = isLocal
+        if !isLocal {
+            tabLastActiveAt[tabID] = Date()
+        }
         bindActiveWebView()
+        pruneInactiveWebViewsIfNeeded()
     }
 
     func webView(for tab: AppTab) -> WKWebView {
@@ -125,6 +132,7 @@ final class WebViewCoordinator: NSObject, ObservableObject {
         }
 
         webViews[tab.id] = webView
+        tabLastActiveAt[tab.id] = Date()
         if tab.id == activeTabID {
             bindActiveWebView()
         }
@@ -150,6 +158,59 @@ final class WebViewCoordinator: NSObject, ObservableObject {
         pageZoom = zoom
         for webView in webViews.values {
             webView.pageZoom = zoom
+        }
+    }
+
+    func configureInactivePruning(minutes: Int) {
+        if minutes <= 0 {
+            inactivePruneTimeout = nil
+            pruneTimer?.invalidate()
+            pruneTimer = nil
+            return
+        }
+
+        inactivePruneTimeout = TimeInterval(minutes * 60)
+        if pruneTimer == nil {
+            pruneTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+                Task { @MainActor in
+                    self?.pruneInactiveWebViewsIfNeeded()
+                }
+            }
+        }
+        pruneInactiveWebViewsIfNeeded()
+    }
+
+    func pruneWebViews(keeping tabIDs: Set<String>) {
+        let toRemove = webViews.keys.filter { !tabIDs.contains($0) }
+        guard !toRemove.isEmpty else { return }
+        removeWebViews(withIDs: toRemove)
+        bindActiveWebView()
+    }
+
+    private func pruneInactiveWebViewsIfNeeded() {
+        guard let timeout = inactivePruneTimeout else { return }
+        let now = Date()
+        let toRemove = webViews.keys.filter { tabID in
+            if tabID == activeTabID {
+                return false
+            }
+            let lastActive = tabLastActiveAt[tabID] ?? .distantPast
+            return now.timeIntervalSince(lastActive) >= timeout
+        }
+        guard !toRemove.isEmpty else { return }
+        removeWebViews(withIDs: toRemove)
+        bindActiveWebView()
+    }
+
+    private func removeWebViews(withIDs tabIDs: [String]) {
+        for tabID in tabIDs {
+            guard let webView = webViews.removeValue(forKey: tabID) else { continue }
+            tabLastActiveAt.removeValue(forKey: tabID)
+            webView.stopLoading()
+            webView.navigationDelegate = nil
+            webView.uiDelegate = nil
+            webView.loadHTMLString("", baseURL: nil)
+            webView.removeFromSuperview()
         }
     }
 
@@ -339,15 +400,19 @@ struct ContentView: View {
                 selectedTabID = visibleTabIDs.contains(selectedTabID) ? selectedTabID : initialTab.id
             }
             web.setPageZoom(clampedWebZoom(state.webZoom))
+            web.configureInactivePruning(minutes: state.inactiveWebTabUnloadMinutes)
             selectCurrentTabInWebCoordinator()
-            for tab in visibleTabs where !tab.isLocal {
-                _ = web.webView(for: tab)
-            }
+            web.pruneWebViews(keeping: Set(visibleWebTabIDs))
+        }
+        .onChange(of: state.inactiveWebTabUnloadMinutes) { value in
+            web.configureInactivePruning(minutes: value)
+            state.persist()
         }
         .onChange(of: selectedTabID) { _ in
             selectCurrentTabInWebCoordinator()
         }
         .onChange(of: visibleTabIDs) { _ in
+            web.pruneWebViews(keeping: Set(visibleWebTabIDs))
             guard let fallback = visibleTabs.first else { return }
             if !visibleTabIDs.contains(selectedTabID) {
                 selectedTabID = fallback.id
@@ -542,7 +607,7 @@ struct ContentView: View {
                 .controlSize(.small)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else if selectedTab?.isLocal == true && state.prefersNativeTab {
+        } else if selectedTab?.isLocal == true {
             LocalNativeChatPane(state: state)
         } else if let tab = selectedTab, !tab.isLocal {
             ProviderWebView(webView: web.webView(for: tab))
@@ -559,16 +624,16 @@ struct ContentView: View {
 
     private var visibleTabs: [AppTab] {
         var tabs: [AppTab] = []
-        if state.showUnconfiguredProviders || hasKey(state.keys.openAI) {
+        if state.providerTabVisibility.openAI && (state.showUnconfiguredProviders || hasKey(state.keys.openAI)) {
             tabs.append(.openAI)
         }
-        if state.showUnconfiguredProviders || hasKey(state.keys.gemini) {
+        if state.providerTabVisibility.gemini && (state.showUnconfiguredProviders || hasKey(state.keys.gemini)) {
             tabs.append(.gemini)
         }
-        if state.showUnconfiguredProviders || hasKey(state.keys.anthropic) {
+        if state.providerTabVisibility.anthropic && (state.showUnconfiguredProviders || hasKey(state.keys.anthropic)) {
             tabs.append(.anthropic)
         }
-        if state.prefersDocsumoTab {
+        if state.providerTabVisibility.docsumo {
             tabs.append(.docsumo)
         }
         let customTabs: [AppTab] = state.customProviders.compactMap { provider in
@@ -576,7 +641,7 @@ struct ContentView: View {
             return AppTab.custom(provider)
         }
         tabs.append(contentsOf: customTabs)
-        if state.prefersNativeTab {
+        if state.providerTabVisibility.local {
             tabs.append(.local)
         }
         return tabs
@@ -584,6 +649,10 @@ struct ContentView: View {
 
     private var visibleTabIDs: [String] {
         visibleTabs.map(\.id)
+    }
+
+    private var visibleWebTabIDs: [String] {
+        visibleTabs.filter { !$0.isLocal }.map(\.id)
     }
 
     private var canUseWebControls: Bool {

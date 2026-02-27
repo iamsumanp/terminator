@@ -24,8 +24,10 @@ final class AppState: ObservableObject {
     @Published var panelWidth: Double
     @Published var panelHeight: Double
     @Published var webZoom: Double
+    @Published var inactiveWebTabUnloadMinutes: Int
     @Published var favoriteModelIDs: [String]
     @Published var customProviders: [CustomProvider]
+    @Published var providerTabVisibility: ProviderTabVisibility
     @Published var focusRequestToken: Int = 0
 
     private let api = APIService()
@@ -42,8 +44,17 @@ final class AppState: ObservableObject {
         self.panelWidth = loaded.panelWidth
         self.panelHeight = loaded.panelHeight
         self.webZoom = loaded.webZoom
+        self.inactiveWebTabUnloadMinutes = loaded.inactiveWebTabUnloadMinutes
         self.favoriteModelIDs = loaded.favoriteModelIDs
         self.customProviders = loaded.customProviders ?? []
+        var providerVisibility = loaded.providerTabVisibility
+        if loaded.prefersNativeTab == false {
+            providerVisibility.local = false
+        }
+        if loaded.prefersDocsumoTab == false {
+            providerVisibility.docsumo = false
+        }
+        self.providerTabVisibility = providerVisibility
 
         if let savedSessions = loaded.sessions, !savedSessions.isEmpty {
             let fallbackID = savedSessions[0].id
@@ -99,16 +110,18 @@ final class AppState: ObservableObject {
                 messages: messages,
                 sessions: sessions,
                 currentSessionID: currentSessionID,
-                prefersNativeTab: prefersNativeTab,
-                prefersDocsumoTab: prefersDocsumoTab,
+                prefersNativeTab: providerTabVisibility.local,
+                prefersDocsumoTab: providerTabVisibility.docsumo,
                 showUnconfiguredProviders: showUnconfiguredProviders,
                 panelHotkeyEnabled: panelHotkeyEnabled,
                 panelHotkey: panelHotkey,
                 panelWidth: panelWidth,
                 panelHeight: panelHeight,
                 webZoom: webZoom,
+                inactiveWebTabUnloadMinutes: inactiveWebTabUnloadMinutes,
                 favoriteModelIDs: favoriteModelIDs,
-                customProviders: customProviders
+                customProviders: customProviders,
+                providerTabVisibility: providerTabVisibility
             )
         )
     }
